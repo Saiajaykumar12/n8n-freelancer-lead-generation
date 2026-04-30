@@ -1,0 +1,506 @@
+{
+  "name": "Fetching Leads from freelancer",
+  "nodes": [
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1huhcWgNvUn5D2TYPN7PLE3McAxPBzxjCBvWXqOBKXsY",
+          "mode": "list",
+          "cachedResultName": "Job title freelancer",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1huhcWgNvUn5D2TYPN7PLE3McAxPBzxjCBvWXqOBKXsY/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1huhcWgNvUn5D2TYPN7PLE3McAxPBzxjCBvWXqOBKXsY/edit#gid=0"
+        },
+        "options": {}
+      },
+      "id": "b41f6f67-bd1f-4523-876d-19ff7ad10bfd",
+      "name": "Read Job Titles from Input Sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        608,
+        384
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "DOR5CIvFccYiAQh4",
+          "name": "Google Sheets account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "condition-1",
+              "leftValue": "={{ $json.Status }}",
+              "rightValue": "pending",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            },
+            {
+              "id": "condition-2",
+              "leftValue": "={{ $json.Job_Title }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "71462487-c9f5-421c-89ae-23a8525e32c3",
+      "name": "Filter Active Job Titles Only",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.2,
+      "position": [
+        832,
+        384
+      ]
+    },
+    {
+      "parameters": {
+        "url": "=https://www.freelancer.com/api/projects/0.1/projects/active/?limit={{ $json.Max_Results || 10 }}&job_details=true&full_description=true&user_details=true&sort_field=time_updated&compact=true&query={{ encodeURIComponent($json.Job_Title) }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "freelancer-oauth-v1",
+              "value": "me1DHbgg3Nys9XcUdtdP7KYKq4Alcq"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "a6b44f4d-9b20-47b5-881b-5e84c4f0fd42",
+      "name": "Fetch Leads from Freelancer API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1056,
+        384
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Get the search keyword from the input item context\nconst searchKeyword = $('Filter Active Job Titles Only').item.json.Job_Title || 'Unknown';\n\n// Parse the Freelancer API response\nconst body = $input.first().json;\n\nif (!body || !body.result || !body.result.projects) {\n  return [{ json: { error: 'No projects found', Search_Keyword: searchKeyword } }];\n}\n\nconst projects = body.result.projects;\nconst users = body.result.users || {};\n\nconst leads = projects.map(project => {\n  const ownerId = project.owner_id;\n  const owner = users[ownerId] || {};\n\n  const jobs = (project.jobs || []).map(j => j.name).join(', ');\n\n  const budgetMin = project.budget ? project.budget.minimum : 'N/A';\n  const budgetMax = project.budget ? project.budget.maximum : 'N/A';\n  const currency = project.currency ? project.currency.code : 'USD';\n  const budgetStr = budgetMin !== 'N/A' ? `${currency} ${budgetMin} - ${budgetMax}` : 'N/A';\n\n  const postedDate = project.time_submitted\n    ? new Date(project.time_submitted * 1000).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })\n    : 'N/A';\n\n  const projectUrl = `https://www.freelancer.com/projects/${project.seo_url}`;\n\n  return {\n    json: {\n      Search_Keyword: searchKeyword,\n      Project_ID: project.id || '',\n      Project_Title: project.title || '',\n      Description: (project.description || '').substring(0, 500),\n      Budget: budgetStr,\n      Skills_Required: jobs,\n      Client_Username: owner.username || 'N/A',\n      Client_Country: owner.location ? owner.location.country.name : 'N/A',\n      Client_Rating: owner.employer_reputation\n        ? (owner.employer_reputation.entire_history?.overall || 'N/A')\n        : 'N/A',\n      Bid_Count: project.bid_stats ? project.bid_stats.bid_count : 0,\n      Project_Type: project.type === 'fixed' ? 'Fixed Price' : 'Hourly',\n      Date_Posted: postedDate,\n      Project_URL: projectUrl,\n      Scraped_At: new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })\n    }\n  };\n});\n\nreturn leads;\n"
+      },
+      "id": "3799510d-5ef5-4596-9f24-3b8d4f31f831",
+      "name": "Parse & Map Lead Fields",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1264,
+        384
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "1huhcWgNvUn5D2TYPN7PLE3McAxPBzxjCBvWXqOBKXsY",
+          "mode": "list",
+          "cachedResultName": "Job title freelancer",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1huhcWgNvUn5D2TYPN7PLE3McAxPBzxjCBvWXqOBKXsY/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 195894070,
+          "mode": "list",
+          "cachedResultName": "Sheet2",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1huhcWgNvUn5D2TYPN7PLE3McAxPBzxjCBvWXqOBKXsY/edit#gid=195894070"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Search_Keyword": "={{ $json.Search_Keyword }}",
+            "Project_ID": "={{ $json.Project_ID }}",
+            "Project_Title": "={{ $json.Project_Title }}",
+            "Description": "={{ $json.Description }}",
+            "Budget": "={{ $json.Budget }}",
+            "Skills_Required": "={{ $json.Skills_Required }}",
+            "Client_Username": "={{ $json.Client_Username }}",
+            "Client_Country": "={{ $json.Client_Country }}",
+            "Client_Rating": "={{ $json.Client_Rating }}",
+            "Bid_Count": "={{ $json.Bid_Count }}",
+            "Project_Type": "={{ $json.Project_Type }}",
+            "Date_Posted": "={{ $json.Date_Posted }}",
+            "Project_URL": "={{ $json.Project_URL }}",
+            "Scraped_At": "={{ $json.Scraped_At }}"
+          },
+          "matchingColumns": [
+            "Project_ID"
+          ],
+          "schema": [
+            {
+              "id": "Search_Keyword",
+              "displayName": "Search_Keyword",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "Project_ID",
+              "displayName": "Project_ID",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Project_Title",
+              "displayName": "Project_Title",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "Description",
+              "displayName": "Description",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "Budget",
+              "displayName": "Budget",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "Skills_Required",
+              "displayName": "Skills_Required",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "Client_Username",
+              "displayName": "Client_Username",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "Client_Country",
+              "displayName": "Client_Country",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "Client_Rating",
+              "displayName": "Client_Rating",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "Bid_Count",
+              "displayName": "Bid_Count",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "Project_Type",
+              "displayName": "Project_Type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "Date_Posted",
+              "displayName": "Date_Posted",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "Project_URL",
+              "displayName": "Project_URL",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "Scraped_At",
+              "displayName": "Scraped_At",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "37260bbf-ff71-44d2-8687-4d65523bce66",
+      "name": "Save Leads to Output Sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        1696,
+        384
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "DOR5CIvFccYiAQh4",
+          "name": "Google Sheets account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours"
+            }
+          ]
+        }
+      },
+      "id": "4a853fb6-ac3c-4fde-8c89-518b415cd97f",
+      "name": "Schedule Trigger (Every 1 Hour)1",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        384,
+        384
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "1huhcWgNvUn5D2TYPN7PLE3McAxPBzxjCBvWXqOBKXsY",
+          "mode": "list",
+          "cachedResultName": "Job title freelancer",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1huhcWgNvUn5D2TYPN7PLE3McAxPBzxjCBvWXqOBKXsY/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1huhcWgNvUn5D2TYPN7PLE3McAxPBzxjCBvWXqOBKXsY/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Status": "done",
+            "Job_Title": "={{ $json.Search_Keyword }}"
+          },
+          "matchingColumns": [
+            "Job_Title"
+          ],
+          "schema": [
+            {
+              "id": "Job_Title",
+              "displayName": "Job_Title",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Status",
+              "displayName": "Status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Max_Results",
+              "displayName": "Max_Results",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1904,
+        384
+      ],
+      "id": "a67748ae-b9c7-4793-96e9-cf1f9fd09905",
+      "name": "Append or update row in sheet",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "DOR5CIvFccYiAQh4",
+          "name": "Google Sheets account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "amount": 10
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        1472,
+        384
+      ],
+      "id": "20f36570-1cd3-4945-bacb-644ea5473aeb",
+      "name": "Wait",
+      "webhookId": "1d97d9aa-a198-41d5-b269-baae93228963"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Read Job Titles from Input Sheet": {
+      "main": [
+        [
+          {
+            "node": "Filter Active Job Titles Only",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Active Job Titles Only": {
+      "main": [
+        [
+          {
+            "node": "Fetch Leads from Freelancer API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Leads from Freelancer API": {
+      "main": [
+        [
+          {
+            "node": "Parse & Map Lead Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse & Map Lead Fields": {
+      "main": [
+        [
+          {
+            "node": "Wait",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schedule Trigger (Every 1 Hour)1": {
+      "main": [
+        [
+          {
+            "node": "Read Job Titles from Input Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Leads to Output Sheet": {
+      "main": [
+        [
+          {
+            "node": "Append or update row in sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait": {
+      "main": [
+        [
+          {
+            "node": "Save Leads to Output Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "3dcf9db0-3277-4ab8-9aff-e969e49d7884",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "ef7861b87ef2c05abf5aa26006f5df1068a0083130fa8abb44c07645db353bf1"
+  },
+  "id": "f4e3OxjvH0wS1Ozf",
+  "tags": []
+}
